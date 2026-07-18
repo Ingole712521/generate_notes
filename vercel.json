@@ -1,0 +1,16 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "installCommand": "npm install",
+  "functions": {
+    "app/api/condense/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/export-pdf/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/upload/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}

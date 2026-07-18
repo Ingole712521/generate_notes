@@ -26,6 +26,19 @@ OPENAI_MODEL=deepseek/deepseek-v4-flash
 
 Uses the OpenAI-compatible SDK against **OpenRouter** by default.
 
+## Deploy on Vercel
+
+1. Import the repo in Vercel.
+2. **Framework Preset: Next.js** (required).
+3. Leave **Output Directory empty** — do not set it to `public`. That setting is for static sites and causes:  
+   `No Output Directory named "public" found after the Build completed.`
+4. Add env vars from `.env.local`:
+   - `OPENAI_API_KEY`
+   - `OPENAI_BASE_URL` (`https://openrouter.ai/api/v1`)
+   - `OPENAI_MODEL`
+
+Build command stays `next build`. Vercel serves the Next.js app from `.next`, not from `public/`.
+
 ## Run
 
 ```bash
