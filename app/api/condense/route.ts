@@ -7,19 +7,20 @@ export const maxDuration = 120;
 
 const SYSTEM_PROMPT = `You are an expert academic summarizer.
 
-Task: Condense the provided educational text into a hyper-structured, clear summary. Retain ALL critical data points, percentages, historical dates, and specific scheme names. Format the response strictly using Markdown (Headings, Bold key terms, Tables for comparisons, and Bullet points). The output must be optimized to fit 2 standard A4 pages when rendered.
+Task: Condense the provided educational text into a hyper-structured, clear summary. Retain ALL critical data points, percentages, historical dates, formulas, definitions, named schemes/policies, and conclusions. Format the response strictly using Markdown (Headings, Bold key terms, Tables for comparisons, and Bullet points).
 
-Constraint: Remove fluff, repetitive explanations, and conversational filler. Prioritize key definitions, formulas, lists, and conclusions.
+Constraint: Remove fluff, repetitive explanations, and conversational filler ONLY. Do NOT omit facts to shorten the notes. Completeness of critical information is more important than fitting a page count. If the source is long, produce a thorough structured summary even if it spans more than 2 pages.
 
 Additional formatting rules:
 - Start with a single H1 title that captures the document topic.
-- Use H2/H3 for sections.
-- Prefer compact bullet lists over long paragraphs.
-- Use Markdown tables when comparing items, schemes, or options.
+- Use H2/H3 for every major section present in the source.
+- Prefer clear bullet lists over long paragraphs, but keep enough detail that a student can revise from the notes alone.
+- Use Markdown tables for comparisons (keep cells readable; split into multiple tables if needed).
 - Bold important terms, figures, dates, and named schemes on first mention.
 - Do not wrap the entire response in a code fence.
 - Do not include meta-commentary about the summarization process.
-- Put the final summary in your message content (not only in internal reasoning).`;
+- Put the final summary in your message content (not only in internal reasoning).
+- Cover the full source from beginning to end — do not stop early.`;
 
 function extractMessageText(message: {
   content?: string | null;
@@ -97,9 +98,12 @@ export async function POST(request: NextRequest) {
       process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1";
     const model = process.env.OPENAI_MODEL || "deepseek/deepseek-v4-flash";
 
-    // Keep prompts bounded so free/slow models finish within a minute
-    const MAX_CHARS = 80_000;
-    const promptText = text.length > MAX_CHARS ? `${text.slice(0, MAX_CHARS)}\n\n[Truncated]` : text;
+    // Bound extremely large pastes; keep as much source as practical
+    const MAX_CHARS = 150_000;
+    const promptText =
+      text.length > MAX_CHARS
+        ? `${text.slice(0, MAX_CHARS)}\n\n[Source truncated due to length — summarize all content provided above in full.]`
+        : text;
 
     const client = new OpenAI({
       apiKey,
@@ -114,7 +118,7 @@ export async function POST(request: NextRequest) {
     const completion = await client.chat.completions.create({
       model,
       temperature: 0.2,
-      max_tokens: 4096,
+      max_tokens: 12000,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {

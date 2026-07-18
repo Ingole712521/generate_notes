@@ -17,14 +17,21 @@ export type MdBlock =
   | { type: "hr" };
 
 function parseInline(text: string): InlineSeg[] {
+  // Normalize common AI quirks that break layout
+  const normalized = text
+    .replace(/\u00a0/g, " ")
+    .replace(/\*\*\s+/g, "**")
+    .replace(/\s+\*\*/g, "**")
+    .replace(/__([^_]+)__/g, "**$1**");
+
   const segs: InlineSeg[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  const re = /(\*\*[^*]+?\*\*|\*[^*]+?\*|`[^`]+`)/g;
   let last = 0;
   let m: RegExpExecArray | null;
 
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(normalized)) !== null) {
     if (m.index > last) {
-      segs.push({ type: "text", value: text.slice(last, m.index) });
+      segs.push({ type: "text", value: normalized.slice(last, m.index) });
     }
     const token = m[0];
     if (token.startsWith("**")) {
@@ -37,11 +44,11 @@ function parseInline(text: string): InlineSeg[] {
     last = m.index + token.length;
   }
 
-  if (last < text.length) {
-    segs.push({ type: "text", value: text.slice(last) });
+  if (last < normalized.length) {
+    segs.push({ type: "text", value: normalized.slice(last) });
   }
 
-  return segs.length ? segs : [{ type: "text", value: text }];
+  return segs.length ? segs : [{ type: "text", value: normalized }];
 }
 
 function splitTableRow(line: string): string[] {

@@ -13,13 +13,17 @@ import {
   type MdBlock,
 } from "./markdown-to-blocks";
 
-const MARGIN = 36; // 0.5 inch at 72 dpi
+/** 0.5 inch at 72 dpi */
+const MARGIN = 36;
+const HEADER_SPACE = 50;
+const FOOTER_SPACE = 28;
+const CONTENT_WIDTH = 595.28 - MARGIN * 2;
 
 const styles = StyleSheet.create({
   page: {
     flexDirection: "column",
-    paddingTop: MARGIN,
-    paddingBottom: MARGIN,
+    paddingTop: MARGIN + HEADER_SPACE,
+    paddingBottom: MARGIN + FOOTER_SPACE,
     paddingHorizontal: MARGIN,
     fontFamily: "Helvetica",
     fontSize: 10,
@@ -27,76 +31,80 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   header: {
-    marginBottom: 10,
+    position: "absolute",
+    top: MARGIN,
+    left: MARGIN,
+    right: MARGIN,
     paddingBottom: 8,
-    borderBottomWidth: 1.5,
+    borderBottomWidth: 1.25,
     borderBottomColor: "#2c403b",
   },
   headerTitle: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 14,
+    fontSize: 13,
     color: "#263632",
-    marginBottom: 2,
+    marginBottom: 3,
+    lineHeight: 1.3,
   },
   headerMeta: {
     fontSize: 8,
     color: "#52786c",
+    lineHeight: 1.3,
   },
-  columns: {
-    flexDirection: "row",
-    gap: 14,
-    flexGrow: 1,
-  },
-  column: {
-    flex: 1,
+  body: {
+    width: CONTENT_WIDTH,
     flexDirection: "column",
   },
   h1: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 12,
-    marginBottom: 6,
-    marginTop: 2,
+    fontSize: 13,
+    marginBottom: 8,
+    marginTop: 4,
     color: "#1a2421",
+    lineHeight: 1.35,
   },
   h2: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 11,
-    marginBottom: 4,
-    marginTop: 8,
+    fontSize: 11.5,
+    marginBottom: 5,
+    marginTop: 12,
     color: "#263632",
+    lineHeight: 1.35,
   },
   h3: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-    marginBottom: 3,
-    marginTop: 6,
+    fontSize: 10.5,
+    marginBottom: 4,
+    marginTop: 9,
     color: "#344e47",
+    lineHeight: 1.35,
   },
   p: {
     fontSize: 10,
-    lineHeight: 1.35,
-    marginBottom: 5,
-    textAlign: "justify",
+    lineHeight: 1.5,
+    marginBottom: 7,
+    textAlign: "left",
   },
   listItem: {
     flexDirection: "row",
-    marginBottom: 3,
-    paddingRight: 2,
+    marginBottom: 4,
+    alignItems: "flex-start",
   },
   bullet: {
-    width: 10,
+    width: 14,
     fontSize: 10,
-    lineHeight: 1.35,
+    lineHeight: 1.5,
   },
   listText: {
-    flex: 1,
+    width: CONTENT_WIDTH - 14,
     fontSize: 10,
-    lineHeight: 1.35,
+    lineHeight: 1.5,
   },
   table: {
-    marginVertical: 6,
+    marginVertical: 8,
     borderWidth: 0.75,
     borderColor: "#9bb8ae",
+    width: CONTENT_WIDTH,
   },
   tableRow: {
     flexDirection: "row",
@@ -107,26 +115,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#e3ebe8",
   },
   tableCell: {
-    flex: 1,
-    padding: 4,
-    fontSize: 8,
-    lineHeight: 1.25,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+    fontSize: 8.5,
+    lineHeight: 1.35,
   },
   tableHeaderCell: {
-    flex: 1,
-    padding: 4,
-    fontSize: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+    fontSize: 8.5,
     fontFamily: "Helvetica-Bold",
-    lineHeight: 1.25,
+    lineHeight: 1.35,
   },
   hr: {
     borderBottomWidth: 0.75,
     borderBottomColor: "#c5d6d0",
-    marginVertical: 8,
+    marginVertical: 10,
   },
   footer: {
     position: "absolute",
-    bottom: 18,
+    bottom: 14,
     left: MARGIN,
     right: MARGIN,
     flexDirection: "row",
@@ -136,11 +144,7 @@ const styles = StyleSheet.create({
   },
   bold: { fontFamily: "Helvetica-Bold" },
   italic: { fontFamily: "Helvetica-Oblique" },
-  code: {
-    fontFamily: "Courier",
-    fontSize: 8.5,
-    backgroundColor: "#f0f4f2",
-  },
+  code: { fontFamily: "Courier", fontSize: 8.5 },
 });
 
 function Inline({ segs }: { segs: InlineSeg[] }) {
@@ -174,39 +178,65 @@ function Inline({ segs }: { segs: InlineSeg[] }) {
   );
 }
 
+function TableBlock({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
+  const colCount = Math.max(block.headers.length, 1);
+  const cellWidth = CONTENT_WIDTH / colCount;
+
+  return (
+    <View style={styles.table} wrap>
+      <View style={[styles.tableRow, styles.tableHeaderRow]} minPresenceAhead={12}>
+        {block.headers.map((cell, ci) => (
+          <Text key={ci} style={[styles.tableHeaderCell, { width: cellWidth }]}>
+            <Inline segs={cell} />
+          </Text>
+        ))}
+      </View>
+      {block.rows.map((row, ri) => (
+        <View key={ri} style={styles.tableRow} wrap={false} minPresenceAhead={10}>
+          {Array.from({ length: colCount }).map((_, ci) => (
+            <Text key={ci} style={[styles.tableCell, { width: cellWidth }]}>
+              {row[ci] ? <Inline segs={row[ci]} /> : " "}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function BlockView({ block }: { block: MdBlock }) {
   switch (block.type) {
     case "h1":
       return (
-        <Text style={styles.h1}>
+        <Text style={styles.h1} minPresenceAhead={20} wrap>
           <Inline segs={block.content} />
         </Text>
       );
     case "h2":
       return (
-        <Text style={styles.h2}>
+        <Text style={styles.h2} minPresenceAhead={18} wrap>
           <Inline segs={block.content} />
         </Text>
       );
     case "h3":
       return (
-        <Text style={styles.h3}>
+        <Text style={styles.h3} minPresenceAhead={16} wrap>
           <Inline segs={block.content} />
         </Text>
       );
     case "p":
       return (
-        <Text style={styles.p}>
+        <Text style={styles.p} wrap>
           <Inline segs={block.content} />
         </Text>
       );
     case "ul":
       return (
-        <View>
+        <View wrap>
           {block.items.map((item, i) => (
-            <View key={i} style={styles.listItem} wrap={false}>
+            <View key={i} style={styles.listItem} wrap minPresenceAhead={12}>
               <Text style={styles.bullet}>•</Text>
-              <Text style={styles.listText}>
+              <Text style={styles.listText} wrap>
                 <Inline segs={item} />
               </Text>
             </View>
@@ -215,11 +245,11 @@ function BlockView({ block }: { block: MdBlock }) {
       );
     case "ol":
       return (
-        <View>
+        <View wrap>
           {block.items.map((item, i) => (
-            <View key={i} style={styles.listItem} wrap={false}>
+            <View key={i} style={styles.listItem} wrap minPresenceAhead={12}>
               <Text style={styles.bullet}>{i + 1}.</Text>
-              <Text style={styles.listText}>
+              <Text style={styles.listText} wrap>
                 <Inline segs={item} />
               </Text>
             </View>
@@ -227,26 +257,7 @@ function BlockView({ block }: { block: MdBlock }) {
         </View>
       );
     case "table":
-      return (
-        <View style={styles.table} wrap={false}>
-          <View style={[styles.tableRow, styles.tableHeaderRow]}>
-            {block.headers.map((cell, ci) => (
-              <Text key={ci} style={styles.tableHeaderCell}>
-                <Inline segs={cell} />
-              </Text>
-            ))}
-          </View>
-          {block.rows.map((row, ri) => (
-            <View key={ri} style={styles.tableRow}>
-              {row.map((cell, ci) => (
-                <Text key={ci} style={styles.tableCell}>
-                  <Inline segs={cell} />
-                </Text>
-              ))}
-            </View>
-          ))}
-        </View>
-      );
+      return <TableBlock block={block} />;
     case "hr":
       return <View style={styles.hr} />;
     default:
@@ -254,29 +265,34 @@ function BlockView({ block }: { block: MdBlock }) {
   }
 }
 
-function splitBlocks(blocks: MdBlock[]): [MdBlock[], MdBlock[]] {
-  if (blocks.length <= 1) return [blocks, []];
-  const mid = Math.ceil(blocks.length / 2);
-  return [blocks.slice(0, mid), blocks.slice(mid)];
-}
-
 export type NotesPdfProps = {
   markdown: string;
   sourceFileName?: string;
 };
 
+/**
+ * Full-width flowing layout: react-pdf auto-paginates so no section is clipped.
+ * Completeness > forced 2-page / two-column packing.
+ */
 export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
   const title = extractTitle(markdown);
   const blocks = parseMarkdownToBlocks(markdown);
-  // Skip duplicate H1 in body if we already use it as header title
-  const bodyBlocks =
-    blocks[0]?.type === "h1" ? blocks.slice(1) : blocks;
-  const [left, right] = splitBlocks(bodyBlocks);
+  // Keep every block, including the leading H1 in the body for completeness
+  const bodyBlocks = blocks;
+
   const generatedAt = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
+
+  const metaLine = [
+    "PDF2Notes Pro · Full condensed notes (no sections omitted)",
+    sourceFileName ? `Source: ${sourceFileName}` : null,
+    generatedAt,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Document
@@ -285,30 +301,20 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
       subject="Condensed academic notes"
       creator="PDF2Notes Pro"
     >
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" style={styles.page} wrap>
         <View style={styles.header} fixed>
           <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerMeta}>
-            PDF2Notes Pro · Condensed notes
-            {sourceFileName ? ` · Source: ${sourceFileName}` : ""} · {generatedAt}
-          </Text>
+          <Text style={styles.headerMeta}>{metaLine}</Text>
         </View>
 
-        <View style={styles.columns}>
-          <View style={styles.column}>
-            {left.map((block, i) => (
-              <BlockView key={`l-${i}`} block={block} />
-            ))}
-          </View>
-          <View style={styles.column}>
-            {right.map((block, i) => (
-              <BlockView key={`r-${i}`} block={block} />
-            ))}
-          </View>
+        <View style={styles.body}>
+          {bodyBlocks.map((block, i) => (
+            <BlockView key={i} block={block} />
+          ))}
         </View>
 
         <View style={styles.footer} fixed>
-          <Text>Generated by PDF2Notes Pro · 0.5″ margins · Helvetica 10pt</Text>
+          <Text>Complete notes · 0.5″ margins · Helvetica 10pt</Text>
           <Text
             render={({ pageNumber, totalPages }) =>
               `Page ${pageNumber} of ${totalPages}`

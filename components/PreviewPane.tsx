@@ -54,7 +54,7 @@ export default function PreviewPane({
           Markdown preview
         </span>
       </div>
-      <article className="prose-notes max-h-[min(70vh,720px)] overflow-y-auto px-5 py-6 sm:px-7">
+      <article className="prose-notes max-h-[min(70vh,720px)] overflow-y-auto overflow-x-hidden px-5 py-6 sm:px-7 break-words">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -78,27 +78,35 @@ export default function PreviewPane({
               <strong className="font-semibold text-ink-950">{children}</strong>
             ),
             ul: ({ children }) => (
-              <ul className="mb-4 list-disc space-y-1 pl-5 text-[15px] text-ink-800">{children}</ul>
+              <ul className="mb-4 list-disc space-y-1.5 pl-5 text-[15px] text-ink-800">
+                {children}
+              </ul>
             ),
             ol: ({ children }) => (
-              <ol className="mb-4 list-decimal space-y-1 pl-5 text-[15px] text-ink-800">
+              <ol className="mb-4 list-decimal space-y-1.5 pl-5 text-[15px] text-ink-800">
                 {children}
               </ol>
             ),
-            li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+            li: ({ children }) => (
+              <li className="leading-relaxed pl-0.5">{children}</li>
+            ),
             table: ({ children }) => (
-              <div className="my-4 overflow-x-auto rounded-lg border border-ink-200">
-                <table className="min-w-full border-collapse text-left text-sm">{children}</table>
+              <div className="my-4 w-full overflow-x-auto rounded-lg border border-ink-200">
+                <table className="w-full table-fixed border-collapse text-left text-sm">
+                  {children}
+                </table>
               </div>
             ),
             thead: ({ children }) => <thead className="bg-ink-100">{children}</thead>,
             th: ({ children }) => (
-              <th className="border-b border-ink-200 px-3 py-2 font-semibold text-ink-900">
+              <th className="break-words border-b border-ink-200 px-2.5 py-2 align-top font-semibold text-ink-900">
                 {children}
               </th>
             ),
             td: ({ children }) => (
-              <td className="border-b border-ink-100 px-3 py-2 text-ink-800">{children}</td>
+              <td className="break-words border-b border-ink-100 px-2.5 py-2 align-top text-ink-800">
+                {children}
+              </td>
             ),
             blockquote: ({ children }) => (
               <blockquote className="my-3 border-l-4 border-accent/60 bg-accent/5 py-1 pl-4 text-ink-700">
@@ -109,13 +117,13 @@ export default function PreviewPane({
               const isBlock = Boolean(className);
               if (isBlock) {
                 return (
-                  <code className="mb-4 block overflow-x-auto rounded-lg bg-ink-950 p-3 text-sm text-ink-50">
+                  <code className="mb-4 block overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-ink-950 p-3 text-sm text-ink-50">
                     {children}
                   </code>
                 );
               }
               return (
-                <code className="rounded bg-ink-100 px-1.5 py-0.5 text-[0.9em] text-ink-900">
+                <code className="break-all rounded bg-ink-100 px-1.5 py-0.5 text-[0.9em] text-ink-900">
                   {children}
                 </code>
               );
