@@ -400,9 +400,14 @@ function BlockView({ block }: { block: MdBlock }) {
 export type NotesPdfProps = {
   markdown: string;
   sourceFileName?: string;
+  partLabel?: string;
 };
 
-export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
+export function NotesPdfDocument({
+  markdown,
+  sourceFileName,
+  partLabel,
+}: NotesPdfProps) {
   const title = extractTitle(markdown);
   const bodyBlocks = parseMarkdownToBlocks(markdown);
 
@@ -413,6 +418,7 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
   });
 
   const metaLine = [
+    partLabel || null,
     sourceFileName ? `Source: ${sourceFileName}` : null,
     generatedAt,
   ]
@@ -421,14 +427,17 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
 
   return (
     <Document
-      title={title}
+      title={partLabel ? `${title} (${partLabel})` : title}
       author="PDF2Notes Pro"
       subject="UPSC Mains Q&A Quick Revision"
       creator="PDF2Notes Pro"
     >
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header} fixed>
-          <Text style={styles.headerEyebrow}>UPSC MAINS · Q&A QUICK REVISION</Text>
+          <Text style={styles.headerEyebrow}>
+            UPSC MAINS · Q&A QUICK REVISION
+            {partLabel ? ` · ${partLabel.toUpperCase()}` : ""}
+          </Text>
           <Text style={styles.headerTitle}>{title}</Text>
           <Text style={styles.headerMeta}>
             Answer frameworks · Data · Memory cues · Flowcharts · Tables
@@ -443,7 +452,11 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
         </View>
 
         <View style={styles.footer} fixed>
-          <Text>PDF2Notes Pro · UPSC Mains revision sheet · Helvetica 10pt</Text>
+          <Text>
+            PDF2Notes Pro
+            {partLabel ? ` · ${partLabel}` : ""}
+            {" · Helvetica 10pt"}
+          </Text>
           <Text
             render={({ pageNumber, totalPages }) =>
               `Page ${pageNumber} of ${totalPages}`

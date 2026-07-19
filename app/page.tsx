@@ -1,26 +1,120 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import FileUploader from "@/components/FileUploader";
 import PreviewPane from "@/components/PreviewPane";
+import { mergeNoteParts, splitSourceChunks } from "@/lib/source-chunks";
+import { splitNotesForPdf } from "@/lib/split-notes";
 
 type Step = "idle" | "extracting" | "condensing" | "ready" | "exporting";
+
+type CondenseResponse = {
+  error?: string;
+  markdown?: string;
+  incomplete?: boolean;
+};
+
+function triggerDownload(blob: Blob, filename: string, openTab: boolean) {
+  const url = URL.createObjectURL(blob);
+  if (openTab) window.open(url, "_blank", "noopener,noreferrer");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 90_000);
+}
+
+function base64ToBlob(base64: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: "application/pdf" });
+}
+
+async function callCondense(payload: {
+  text: string;
+  fileName: string;
+  mode?: "start" | "continue";
+  priorMarkdown?: string;
+}): Promise<CondenseResponse> {
+  const res = await fetch("/api/condense", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  let data: CondenseResponse = {};
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(
+      res.status === 504 || res.status === 408
+        ? "Server timed out. Redeploy the latest build (multi-step generate). Free models are slow — try deepseek/deepseek-v4-flash."
+        : `Condensing failed (HTTP ${res.status}).`
+    );
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || `Failed to condense notes (HTTP ${res.status}).`);
+  }
+  if (!data.markdown) {
+    throw new Error("Condensing returned no markdown.");
+  }
+  return data;
+}
+
+/** One chunk: start + up to N continue calls (each call stays under Vercel timeout). */
+async function condenseChunk(
+  text: string,
+  fileName: string,
+  onProgress: (msg: string) => void,
+  maxContinues = 3
+): Promise<string> {
+  onProgress("Generating notes…");
+  let data = await callCondense({ text, fileName, mode: "start" });
+  let markdown = data.markdown!;
+  let continues = 0;
+
+  while (data.incomplete && continues < maxContinues) {
+    continues += 1;
+    onProgress(`Continuing notes (pass ${continues + 1})…`);
+    data = await callCondense({
+      text,
+      fileName,
+      mode: "continue",
+      priorMarkdown: markdown,
+    });
+    markdown = mergeNoteParts(markdown, data.markdown!);
+  }
+
+  return markdown;
+}
 
 export default function HomePage() {
   const [file, setFile] = useState<File | null>(null);
   const [markdown, setMarkdown] = useState("");
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [exportHint, setExportHint] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ pageCount: number | null; truncated: boolean } | null>(
     null
   );
 
   const busy = step === "extracting" || step === "condensing" || step === "exporting";
+  const splitInfo = useMemo(
+    () => (markdown ? splitNotesForPdf(markdown) : null),
+    [markdown]
+  );
 
   const resetNotes = () => {
     setMarkdown("");
     setMeta(null);
     setError(null);
+    setProgress(null);
+    setExportHint(null);
     setStep("idle");
   };
 
@@ -29,6 +123,8 @@ export default function HomePage() {
     setMarkdown("");
     setMeta(null);
     setError(null);
+    setProgress(null);
+    setExportHint(null);
     setStep("idle");
   }, []);
 
@@ -36,9 +132,11 @@ export default function HomePage() {
     if (!file || busy) return;
     setError(null);
     setMarkdown("");
+    setExportHint(null);
 
     try {
       setStep("extracting");
+      setProgress("Extracting PDF text…");
       const formData = new FormData();
       formData.append("file", file);
 
@@ -58,79 +156,98 @@ export default function HomePage() {
       });
 
       setStep("condensing");
-      const condenseRes = await fetch("/api/condense", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: uploadData.text,
-          fileName: uploadData.fileName || file.name,
-        }),
-      });
+      const chunks = splitSourceChunks(uploadData.text as string);
+      const fileName = (uploadData.fileName as string) || file.name;
+      let combined = "";
 
-      let condenseData: { error?: string; markdown?: string } = {};
-      try {
-        condenseData = await condenseRes.json();
-      } catch {
-        throw new Error(
-          condenseRes.ok
-            ? "Invalid response from /api/condense."
-            : `Condensing failed (HTTP ${condenseRes.status}). Check the terminal for details.`
-        );
+      for (let i = 0; i < chunks.length; i += 1) {
+        const label =
+          chunks.length > 1
+            ? `Section ${i + 1}/${chunks.length}`
+            : "Generating notes";
+        setProgress(`${label}…`);
+        const part = await condenseChunk(chunks[i], fileName, setProgress);
+        combined = i === 0 ? part : mergeNoteParts(combined, part);
+        // Show partial preview as we go
+        setMarkdown(combined);
       }
 
-      if (!condenseRes.ok) {
-        throw new Error(condenseData.error || `Failed to condense notes (HTTP ${condenseRes.status}).`);
-      }
-
-      if (!condenseData.markdown) {
-        throw new Error("Condensing succeeded but returned no markdown.");
-      }
-
-      setMarkdown(condenseData.markdown as string);
+      setProgress(null);
       setStep("ready");
     } catch (err) {
-      setStep("idle");
+      setStep(markdown ? "ready" : "idle");
+      setProgress(null);
       setError(err instanceof Error ? err.message : "Something went wrong.");
     }
   };
 
-  const downloadPdf = async () => {
+  const downloadComplete = async () => {
     if (!markdown || busy) return;
     setError(null);
+    setExportHint(null);
 
     try {
       setStep("exporting");
+      setProgress("Building PDF…");
       const res = await fetch("/api/export-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           markdown,
           fileName: file?.name,
+          part: "all",
         }),
       });
 
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to generate PDF.");
+      }
+
+      const files: { name: string; base64: string }[] = data.files || [];
+      if (!files.length) throw new Error("No PDF files returned.");
+
+      files.forEach((f, i) => {
+        triggerDownload(base64ToBlob(f.base64), f.name, i === 0);
+      });
+
+      setExportHint(
+        data.split
+          ? "Downloaded 2 PDFs (Part 1 + Part 2). Together they are the complete notes."
+          : "Downloaded 1 complete revision PDF."
+      );
+      setProgress(null);
+      setStep("ready");
+    } catch (err) {
+      setStep("ready");
+      setProgress(null);
+      setError(err instanceof Error ? err.message : "PDF export failed.");
+    }
+  };
+
+  const downloadPart = async (part: "1" | "2") => {
+    if (!markdown || busy) return;
+    setError(null);
+    try {
+      setStep("exporting");
+      const res = await fetch("/api/export-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markdown, fileName: file?.name, part }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to generate PDF.");
       }
-
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = /filename="([^"]+)"/.exec(disposition);
-      const filename = match?.[1] || "notes-pdf2notes.pdf";
-
-      // Open inline in a new tab (browser PDF viewer) and trigger download
-      window.open(url, "_blank", "noopener,noreferrer");
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      triggerDownload(
+        blob,
+        match?.[1] || `notes-part${part}-of-2.pdf`,
+        true
+      );
+      setExportHint(`Downloaded Part ${part} of 2.`);
       setStep("ready");
     } catch (err) {
       setStep("ready");
@@ -142,9 +259,9 @@ export default function HomePage() {
     step === "extracting"
       ? "Extracting text…"
       : step === "condensing"
-        ? "Building full UPSC notes…"
+        ? progress || "Building UPSC notes…"
         : step === "exporting"
-          ? "Generating PDF…"
+          ? progress || "Generating PDF…"
           : null;
 
   return (
@@ -163,8 +280,8 @@ export default function HomePage() {
             PDF2Notes Pro
           </h1>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-700 text-balance">
-            Turn any GS PDF into Mains-ready Q&A notes—answer frameworks, data tables, memory cues,
-            and flowcharts—then download a clean revision PDF.
+            Turn any GS PDF into Mains-ready Q&A notes. Long docs generate in short steps (no Vercel
+            timeout) and download as Part 1 + Part 2 when needed.
           </p>
         </header>
 
@@ -196,7 +313,7 @@ export default function HomePage() {
               <button
                 type="button"
                 disabled={!markdown || busy}
-                onClick={downloadPdf}
+                onClick={downloadComplete}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-accent bg-white px-5 py-3 text-sm font-semibold text-accent-deep transition hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {step === "exporting" ? (
@@ -204,6 +321,8 @@ export default function HomePage() {
                     <Spinner />
                     Generating PDF…
                   </>
+                ) : splitInfo?.needsSplit ? (
+                  "Download complete (2 PDFs)"
                 ) : (
                   "Download revision PDF"
                 )}
@@ -221,11 +340,51 @@ export default function HomePage() {
               )}
             </div>
 
+            {progress && busy && (
+              <p className="text-sm text-ink-600" role="status">
+                {progress}
+              </p>
+            )}
+
+            {splitInfo?.needsSplit && markdown && (
+              <div className="rounded-xl border border-ink-200 bg-white/70 px-4 py-3 text-sm text-ink-700">
+                <p className="font-medium text-ink-900">
+                  Long notes ({splitInfo.questionCount} questions) → 2 PDFs so nothing is cut.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => downloadPart("1")}
+                    className="rounded-lg border border-ink-300 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800 hover:bg-ink-50 disabled:opacity-50"
+                  >
+                    Part 1 of 2 only
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => downloadPart("2")}
+                    className="rounded-lg border border-ink-300 bg-white px-3 py-1.5 text-xs font-semibold text-ink-800 hover:bg-ink-50 disabled:opacity-50"
+                  >
+                    Part 2 of 2 only
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {exportHint && (
+              <p className="text-sm font-medium text-ink-700" role="status">
+                {exportHint}
+              </p>
+            )}
+
             {meta && (
               <p className="text-sm text-ink-600">
                 Extracted
-                {meta.pageCount != null ? ` ${meta.pageCount} page${meta.pageCount === 1 ? "" : "s"}` : " text"}
-                {meta.truncated ? " (long document truncated for AI)" : ""}.
+                {meta.pageCount != null
+                  ? ` ${meta.pageCount} page${meta.pageCount === 1 ? "" : "s"}`
+                  : " text"}
+                {meta.truncated ? " (very long source capped)" : ""}.
               </p>
             )}
 
@@ -240,16 +399,15 @@ export default function HomePage() {
 
             <ol className="space-y-2 rounded-2xl border border-ink-200/80 bg-white/50 p-5 text-sm text-ink-700">
               <li>
-                <span className="font-semibold text-ink-900">1. Upload</span> — GS notes, coaching
-                PDF, or chapter (max 10MB).
+                <span className="font-semibold text-ink-900">1. Upload</span> — GS PDF (max 10MB).
               </li>
               <li>
-                <span className="font-semibold text-ink-900">2. Generate</span> — AI builds Mains Q&A
-                with frameworks, data, memory cues & flowcharts.
+                <span className="font-semibold text-ink-900">2. Generate</span> — short AI steps
+                (avoids Vercel timeout); preview fills as it goes.
               </li>
               <li>
-                <span className="font-semibold text-ink-900">3. Revise</span> — download a formatted
-                PDF ready for last-minute revision.
+                <span className="font-semibold text-ink-900">3. Download</span> — 1 PDF or Part 1 +
+                Part 2 for long notes.
               </li>
             </ol>
           </section>
@@ -257,13 +415,13 @@ export default function HomePage() {
           <section className="animate-fade-up" style={{ animationDelay: "140ms" }}>
             <PreviewPane
               markdown={markdown}
-              isLoading={step === "extracting" || step === "condensing"}
+              isLoading={step === "extracting" || (step === "condensing" && !markdown)}
             />
           </section>
         </div>
 
         <footer className="mt-16 border-t border-ink-200/70 pt-6 text-center text-xs text-ink-500">
-          PDF2Notes Pro · Next.js · OpenAI · @react-pdf/renderer
+          PDF2Notes Pro · Next.js · OpenRouter · @react-pdf/renderer
         </footer>
       </div>
     </main>
@@ -272,12 +430,7 @@ export default function HomePage() {
 
 function Spinner() {
   return (
-    <svg
-      className="h-4 w-4 animate-spin"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-    >
+    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle
         className="opacity-25"
         cx="12"
