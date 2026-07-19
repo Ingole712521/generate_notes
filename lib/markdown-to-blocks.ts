@@ -1,6 +1,6 @@
 /**
- * Lightweight Markdown → structured blocks for @react-pdf/renderer.
- * Supports headings, paragraphs, lists, bold/italic inline, and GFM tables.
+ * Markdown → blocks for UPSC Mains revision PDFs.
+ * Supports headings, lists, tables, blockquotes (memory cues), and fenced flowcharts.
  */
 
 export type InlineSeg =
@@ -10,14 +10,17 @@ export type InlineSeg =
   | { type: "code"; value: string };
 
 export type MdBlock =
-  | { type: "h1" | "h2" | "h3"; content: InlineSeg[] }
+  | { type: "h1" | "h2" | "h3" | "h4"; content: InlineSeg[] }
   | { type: "p"; content: InlineSeg[] }
   | { type: "ul" | "ol"; items: InlineSeg[][] }
   | { type: "table"; headers: InlineSeg[][]; rows: InlineSeg[][][] }
-  | { type: "hr" };
+  | { type: "hr" }
+  | { type: "callout"; variant: CalloutVariant; content: InlineSeg[][]; title?: string }
+  | { type: "flowchart"; lines: string[] };
+
+export type CalloutVariant = "memory" | "framework" | "data" | "note" | "default";
 
 function parseInline(text: string): InlineSeg[] {
-  // Normalize common AI quirks that break layout
   const normalized = text
     .replace(/\u00a0/g, " ")
     .replace(/\*\*\s+/g, "**")
@@ -63,6 +66,23 @@ function isSeparatorRow(line: string): boolean {
   return cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c));
 }
 
+function detectCalloutVariant(text: string): { variant: CalloutVariant; title?: string } {
+  const lower = text.toLowerCase();
+  if (/memory\s*cue|mnemonic|hook/.test(lower)) {
+    return { variant: "memory", title: "Memory Cue" };
+  }
+  if (/answer\s*framework|answering\s*framework|structure\s*of\s*answer/.test(lower)) {
+    return { variant: "framework", title: "Answer Framework" };
+  }
+  if (/data\s*bank|key\s*data|facts?\s*&?\s*figures|statistics/.test(lower)) {
+    return { variant: "data", title: "Data & Facts" };
+  }
+  if (/value\s*addition|keywords?|pyq/.test(lower)) {
+    return { variant: "note", title: "Value Addition" };
+  }
+  return { variant: "default" };
+}
+
 export function parseMarkdownToBlocks(markdown: string): MdBlock[] {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
@@ -77,24 +97,56 @@ export function parseMarkdownToBlocks(markdown: string): MdBlock[] {
       continue;
     }
 
+    // Fenced code / flowchart
+    if (trimmed.startsWith("```")) {
+      i += 1;
+      const codeLines: string[] = [];
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        codeLines.push(lines[i].replace(/\t/g, "  "));
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({
+        type: "flowchart",
+        lines: codeLines.length ? codeLines : ["(empty flowchart)"],
+      });
+      continue;
+    }
+
     if (/^---+$/.test(trimmed) || /^\*\*\*+$/.test(trimmed)) {
       blocks.push({ type: "hr" });
       i += 1;
       continue;
     }
 
-    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
     if (heading) {
-      const level = heading[1].length as 1 | 2 | 3;
-      blocks.push({
-        type: (`h${level}` as "h1" | "h2" | "h3"),
-        content: parseInline(heading[2]),
-      });
+      const level = heading[1].length as 1 | 2 | 3 | 4;
+      const tag = `h${level}` as "h1" | "h2" | "h3" | "h4";
+      blocks.push({ type: tag, content: parseInline(heading[2]) });
       i += 1;
       continue;
     }
 
-    // Table: header + separator + rows
+    // Blockquote → callout (memory cue / notes)
+    if (trimmed.startsWith(">")) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith(">")) {
+        quoteLines.push(lines[i].trim().replace(/^>\s?/, ""));
+        i += 1;
+      }
+      const joined = quoteLines.join(" ");
+      const { variant, title } = detectCalloutVariant(joined);
+      blocks.push({
+        type: "callout",
+        variant,
+        title,
+        content: quoteLines.map((l) => parseInline(l)),
+      });
+      continue;
+    }
+
+    // Table
     if (
       trimmed.includes("|") &&
       i + 1 < lines.length &&
@@ -103,7 +155,11 @@ export function parseMarkdownToBlocks(markdown: string): MdBlock[] {
       const headers = splitTableRow(trimmed).map(parseInline);
       i += 2;
       const rows: InlineSeg[][][] = [];
-      while (i < lines.length && lines[i].trim().includes("|") && !isSeparatorRow(lines[i].trim())) {
+      while (
+        i < lines.length &&
+        lines[i].trim().includes("|") &&
+        !isSeparatorRow(lines[i].trim())
+      ) {
         rows.push(splitTableRow(lines[i].trim()).map(parseInline));
         i += 1;
       }
@@ -133,16 +189,18 @@ export function parseMarkdownToBlocks(markdown: string): MdBlock[] {
       continue;
     }
 
-    // Paragraph (merge consecutive non-empty, non-special lines)
+    // Paragraph
     const paraLines: string[] = [trimmed];
     i += 1;
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !/^(#{1,3})\s+/.test(lines[i].trim()) &&
+      !/^(#{1,4})\s+/.test(lines[i].trim()) &&
       !/^[-*+]\s+/.test(lines[i].trim()) &&
       !/^\d+\.\s+/.test(lines[i].trim()) &&
       !/^---+$/.test(lines[i].trim()) &&
+      !lines[i].trim().startsWith(">") &&
+      !lines[i].trim().startsWith("```") &&
       !(
         lines[i].trim().includes("|") &&
         i + 1 < lines.length &&
@@ -158,7 +216,10 @@ export function parseMarkdownToBlocks(markdown: string): MdBlock[] {
   return blocks;
 }
 
-export function extractTitle(markdown: string, fallback = "Condensed Notes"): string {
+export function extractTitle(
+  markdown: string,
+  fallback = "UPSC Mains Quick Revision"
+): string {
   const match = /^#\s+(.+)$/m.exec(markdown);
   return match ? match[1].replace(/\*\*/g, "").trim() : fallback;
 }

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PDF2Notes Pro — Condense PDFs into Structured Notes",
+  title: "PDF2Notes Pro — UPSC Mains Q&A Quick Revision",
   description:
-    "Upload a PDF, get AI-condensed structured short notes, and download a polished two-page A4 PDF.",
+    "Upload a PDF and get UPSC Mains-ready Q&A notes with answer frameworks, data tables, memory cues, and flowcharts—download as a revision PDF.",
 };
 
 export default function RootLayout({

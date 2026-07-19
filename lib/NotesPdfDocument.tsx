@@ -9,15 +9,26 @@ import {
 import {
   extractTitle,
   parseMarkdownToBlocks,
+  type CalloutVariant,
   type InlineSeg,
   type MdBlock,
 } from "./markdown-to-blocks";
 
-/** 0.5 inch at 72 dpi */
 const MARGIN = 36;
-const HEADER_SPACE = 50;
+const HEADER_SPACE = 52;
 const FOOTER_SPACE = 28;
 const CONTENT_WIDTH = 595.28 - MARGIN * 2;
+
+const CALLOUT_COLORS: Record<
+  CalloutVariant,
+  { border: string; bg: string; label: string }
+> = {
+  memory: { border: "#c45c26", bg: "#fdf6f0", label: "#8f3f12" },
+  framework: { border: "#2c403b", bg: "#f0f5f3", label: "#263632" },
+  data: { border: "#3f6057", bg: "#eef6f3", label: "#344e47" },
+  note: { border: "#6f9487", bg: "#f4f7f6", label: "#3f6057" },
+  default: { border: "#9bb8ae", bg: "#f7f9f8", label: "#344e47" },
+};
 
 const styles = StyleSheet.create({
   page: {
@@ -36,18 +47,26 @@ const styles = StyleSheet.create({
     left: MARGIN,
     right: MARGIN,
     paddingBottom: 8,
-    borderBottomWidth: 1.25,
+    borderBottomWidth: 1.5,
     borderBottomColor: "#2c403b",
+  },
+  headerEyebrow: {
+    fontSize: 7.5,
+    fontFamily: "Helvetica-Bold",
+    color: "#c45c26",
+    letterSpacing: 0.6,
+    marginBottom: 2,
+    textTransform: "uppercase",
   },
   headerTitle: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 13,
+    fontSize: 12.5,
     color: "#263632",
-    marginBottom: 3,
+    marginBottom: 2,
     lineHeight: 1.3,
   },
   headerMeta: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: "#52786c",
     lineHeight: 1.3,
   },
@@ -59,49 +78,63 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     fontSize: 13,
     marginBottom: 8,
-    marginTop: 4,
+    marginTop: 2,
     color: "#1a2421",
     lineHeight: 1.35,
   },
   h2: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 11.5,
-    marginBottom: 5,
-    marginTop: 12,
-    color: "#263632",
+    fontSize: 11,
+    marginBottom: 6,
+    marginTop: 14,
+    color: "#1a2421",
     lineHeight: 1.35,
+    backgroundColor: "#e3ebe8",
+    paddingVertical: 5,
+    paddingHorizontal: 7,
   },
   h3: {
     fontFamily: "Helvetica-Bold",
     fontSize: 10.5,
     marginBottom: 4,
-    marginTop: 9,
+    marginTop: 10,
+    color: "#263632",
+    lineHeight: 1.35,
+    borderBottomWidth: 0.75,
+    borderBottomColor: "#c5d6d0",
+    paddingBottom: 2,
+  },
+  h4: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 10,
+    marginBottom: 3,
+    marginTop: 8,
     color: "#344e47",
     lineHeight: 1.35,
   },
   p: {
     fontSize: 10,
-    lineHeight: 1.5,
-    marginBottom: 7,
+    lineHeight: 1.45,
+    marginBottom: 6,
     textAlign: "left",
   },
   listItem: {
     flexDirection: "row",
-    marginBottom: 4,
+    marginBottom: 3.5,
     alignItems: "flex-start",
   },
   bullet: {
     width: 14,
     fontSize: 10,
-    lineHeight: 1.5,
+    lineHeight: 1.45,
   },
   listText: {
     width: CONTENT_WIDTH - 14,
     fontSize: 10,
-    lineHeight: 1.5,
+    lineHeight: 1.45,
   },
   table: {
-    marginVertical: 8,
+    marginVertical: 7,
     borderWidth: 0.75,
     borderColor: "#9bb8ae",
     width: CONTENT_WIDTH,
@@ -116,14 +149,14 @@ const styles = StyleSheet.create({
   },
   tableCell: {
     paddingVertical: 4,
-    paddingHorizontal: 5,
-    fontSize: 8.5,
+    paddingHorizontal: 4,
+    fontSize: 8,
     lineHeight: 1.35,
   },
   tableHeaderCell: {
     paddingVertical: 4,
-    paddingHorizontal: 5,
-    fontSize: 8.5,
+    paddingHorizontal: 4,
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
     lineHeight: 1.35,
   },
@@ -131,6 +164,46 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.75,
     borderBottomColor: "#c5d6d0",
     marginVertical: 10,
+  },
+  callout: {
+    marginVertical: 7,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderLeftWidth: 3,
+    borderRadius: 2,
+  },
+  calloutTitle: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    marginBottom: 3,
+    letterSpacing: 0.3,
+  },
+  calloutLine: {
+    fontSize: 9.5,
+    lineHeight: 1.4,
+    marginBottom: 2,
+  },
+  flowchart: {
+    marginVertical: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: "#f4f7f6",
+    borderWidth: 0.75,
+    borderColor: "#9bb8ae",
+  },
+  flowchartLabel: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8,
+    color: "#3f6057",
+    marginBottom: 5,
+    letterSpacing: 0.4,
+  },
+  flowchartLine: {
+    fontFamily: "Courier",
+    fontSize: 8,
+    lineHeight: 1.35,
+    color: "#1a2421",
+    marginBottom: 1,
   },
   footer: {
     position: "absolute",
@@ -178,13 +251,18 @@ function Inline({ segs }: { segs: InlineSeg[] }) {
   );
 }
 
+function headingLooksLikeQuestion(segs: InlineSeg[]): boolean {
+  const text = segs.map((s) => s.value).join("");
+  return /^(q\d*\.?|question)\b/i.test(text.trim()) || /\?\s*$/.test(text.trim());
+}
+
 function TableBlock({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
   const colCount = Math.max(block.headers.length, 1);
   const cellWidth = CONTENT_WIDTH / colCount;
 
   return (
     <View style={styles.table} wrap>
-      <View style={[styles.tableRow, styles.tableHeaderRow]} minPresenceAhead={12}>
+      <View style={[styles.tableRow, styles.tableHeaderRow]} minPresenceAhead={14}>
         {block.headers.map((cell, ci) => (
           <Text key={ci} style={[styles.tableHeaderCell, { width: cellWidth }]}>
             <Inline segs={cell} />
@@ -204,23 +282,69 @@ function TableBlock({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
   );
 }
 
+function CalloutBlock({
+  block,
+}: {
+  block: Extract<MdBlock, { type: "callout" }>;
+}) {
+  const colors = CALLOUT_COLORS[block.variant] || CALLOUT_COLORS.default;
+  return (
+    <View
+      style={[
+        styles.callout,
+        {
+          borderLeftColor: colors.border,
+          backgroundColor: colors.bg,
+        },
+      ]}
+      wrap
+      minPresenceAhead={24}
+    >
+      {block.title ? (
+        <Text style={[styles.calloutTitle, { color: colors.label }]}>
+          {block.title.toUpperCase()}
+        </Text>
+      ) : null}
+      {block.content.map((line, i) => (
+        <Text key={i} style={styles.calloutLine}>
+          <Inline segs={line} />
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 function BlockView({ block }: { block: MdBlock }) {
   switch (block.type) {
     case "h1":
       return (
-        <Text style={styles.h1} minPresenceAhead={20} wrap>
+        <Text style={styles.h1} minPresenceAhead={22} wrap>
           <Inline segs={block.content} />
         </Text>
       );
     case "h2":
       return (
-        <Text style={styles.h2} minPresenceAhead={18} wrap>
+        <Text
+          style={
+            headingLooksLikeQuestion(block.content)
+              ? styles.h2
+              : [styles.h2, { backgroundColor: "#f0f4f2" }]
+          }
+          minPresenceAhead={20}
+          wrap
+        >
           <Inline segs={block.content} />
         </Text>
       );
     case "h3":
       return (
-        <Text style={styles.h3} minPresenceAhead={16} wrap>
+        <Text style={styles.h3} minPresenceAhead={18} wrap>
+          <Inline segs={block.content} />
+        </Text>
+      );
+    case "h4":
+      return (
+        <Text style={styles.h4} minPresenceAhead={16} wrap>
           <Inline segs={block.content} />
         </Text>
       );
@@ -258,6 +382,19 @@ function BlockView({ block }: { block: MdBlock }) {
       );
     case "table":
       return <TableBlock block={block} />;
+    case "callout":
+      return <CalloutBlock block={block} />;
+    case "flowchart":
+      return (
+        <View style={styles.flowchart} wrap minPresenceAhead={36}>
+          <Text style={styles.flowchartLabel}>FLOWCHART / DIAGRAM</Text>
+          {block.lines.map((line, i) => (
+            <Text key={i} style={styles.flowchartLine}>
+              {line || " "}
+            </Text>
+          ))}
+        </View>
+      );
     case "hr":
       return <View style={styles.hr} />;
     default:
@@ -270,15 +407,9 @@ export type NotesPdfProps = {
   sourceFileName?: string;
 };
 
-/**
- * Full-width flowing layout: react-pdf auto-paginates so no section is clipped.
- * Completeness > forced 2-page / two-column packing.
- */
 export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
   const title = extractTitle(markdown);
-  const blocks = parseMarkdownToBlocks(markdown);
-  // Keep every block, including the leading H1 in the body for completeness
-  const bodyBlocks = blocks;
+  const bodyBlocks = parseMarkdownToBlocks(markdown);
 
   const generatedAt = new Date().toLocaleDateString("en-US", {
     year: "numeric",
@@ -287,7 +418,6 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
   });
 
   const metaLine = [
-    "PDF2Notes Pro · Full condensed notes (no sections omitted)",
     sourceFileName ? `Source: ${sourceFileName}` : null,
     generatedAt,
   ]
@@ -298,13 +428,17 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
     <Document
       title={title}
       author="PDF2Notes Pro"
-      subject="Condensed academic notes"
+      subject="UPSC Mains Q&A Quick Revision"
       creator="PDF2Notes Pro"
     >
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header} fixed>
+          <Text style={styles.headerEyebrow}>UPSC MAINS · Q&A QUICK REVISION</Text>
           <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerMeta}>{metaLine}</Text>
+          <Text style={styles.headerMeta}>
+            Answer frameworks · Data · Memory cues · Flowcharts · Tables
+            {metaLine ? ` · ${metaLine}` : ""}
+          </Text>
         </View>
 
         <View style={styles.body}>
@@ -314,7 +448,7 @@ export function NotesPdfDocument({ markdown, sourceFileName }: NotesPdfProps) {
         </View>
 
         <View style={styles.footer} fixed>
-          <Text>Complete notes · 0.5″ margins · Helvetica 10pt</Text>
+          <Text>PDF2Notes Pro · UPSC Mains revision sheet · Helvetica 10pt</Text>
           <Text
             render={({ pageNumber, totalPages }) =>
               `Page ${pageNumber} of ${totalPages}`

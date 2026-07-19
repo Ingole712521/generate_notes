@@ -142,7 +142,7 @@ export default function HomePage() {
     step === "extracting"
       ? "Extracting text…"
       : step === "condensing"
-        ? "Condensing with AI…"
+        ? "Building UPSC notes…"
         : step === "exporting"
           ? "Generating PDF…"
           : null;
@@ -157,14 +157,14 @@ export default function HomePage() {
       <div className="relative mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 lg:px-8">
         <header className="mb-10 animate-fade-up">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-accent-deep">
-            Academic PDF workflow
+            UPSC Mains · Quick revision
           </p>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-ink-950 sm:text-5xl md:text-6xl">
             PDF2Notes Pro
           </h1>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-700 text-balance">
-            Upload a PDF, get hyper-structured short notes built for two A4 pages, then download a
-            clean two-column PDF—margins set, no print fiddling.
+            Turn any GS PDF into Mains-ready Q&A notes—answer frameworks, data tables, memory cues,
+            and flowcharts—then download a clean revision PDF.
           </p>
         </header>
 
@@ -189,7 +189,7 @@ export default function HomePage() {
                     {statusLabel}
                   </>
                 ) : (
-                  "Generate notes"
+                  "Generate UPSC notes"
                 )}
               </button>
 
@@ -205,7 +205,7 @@ export default function HomePage() {
                     Generating PDF…
                   </>
                 ) : (
-                  "Download as PDF"
+                  "Download revision PDF"
                 )}
               </button>
 
@@ -240,15 +240,16 @@ export default function HomePage() {
 
             <ol className="space-y-2 rounded-2xl border border-ink-200/80 bg-white/50 p-5 text-sm text-ink-700">
               <li>
-                <span className="font-semibold text-ink-900">1. Upload</span> — drag a PDF (max 10MB).
+                <span className="font-semibold text-ink-900">1. Upload</span> — GS notes, coaching
+                PDF, or chapter (max 10MB).
               </li>
               <li>
-                <span className="font-semibold text-ink-900">2. Condense</span> — AI keeps dates,
-                figures, schemes; drops fluff.
+                <span className="font-semibold text-ink-900">2. Generate</span> — AI builds Mains Q&A
+                with frameworks, data, memory cues & flowcharts.
               </li>
               <li>
-                <span className="font-semibold text-ink-900">3. Download</span> — two-column A4 PDF
-                with 0.5″ margins.
+                <span className="font-semibold text-ink-900">3. Revise</span> — download a formatted
+                PDF ready for last-minute revision.
               </li>
             </ol>
           </section>

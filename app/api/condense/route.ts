@@ -5,22 +5,67 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const SYSTEM_PROMPT = `You are an expert academic summarizer.
+const SYSTEM_PROMPT = `You are an expert UPSC Civil Services (Mains) mentor and notes-maker.
 
-Task: Condense the provided educational text into a hyper-structured, clear summary. Retain ALL critical data points, percentages, historical dates, formulas, definitions, named schemes/policies, and conclusions. Format the response strictly using Markdown (Headings, Bold key terms, Tables for comparisons, and Bullet points).
+Task: Convert the provided educational / GS text into a QUICK-REVISION sheet in Question–Answer format, optimized for UPSC Mains answer writing. Retain ALL critical data points, percentages, years, committees, articles, judgments, schemes, reports, and named institutions.
 
-Constraint: Remove fluff, repetitive explanations, and conversational filler ONLY. Do NOT omit facts to shorten the notes. Completeness of critical information is more important than fitting a page count. If the source is long, produce a thorough structured summary even if it spans more than 2 pages.
+Output MUST be Markdown only (no code fence wrapping the whole response). Put the final notes in message content.
 
-Additional formatting rules:
-- Start with a single H1 title that captures the document topic.
-- Use H2/H3 for every major section present in the source.
-- Prefer clear bullet lists over long paragraphs, but keep enough detail that a student can revise from the notes alone.
-- Use Markdown tables for comparisons (keep cells readable; split into multiple tables if needed).
-- Bold important terms, figures, dates, and named schemes on first mention.
-- Do not wrap the entire response in a code fence.
-- Do not include meta-commentary about the summarization process.
-- Put the final summary in your message content (not only in internal reasoning).
-- Cover the full source from beginning to end — do not stop early.`;
+## Document structure (follow strictly)
+
+# {Topic} — UPSC Mains Quick Revision
+
+Brief 2–3 line syllabus mapping / why this topic matters for Mains (GS paper if clear).
+
+Then create **multiple probable Mains questions** covering the FULL source (do not stop early). For EACH question use this exact subsection pattern:
+
+## Q{n}. {Write a realistic UPSC Mains-style question ending with ?}
+
+### Answer Framework
+Numbered exam-ready structure, e.g.:
+1. **Introduction** — definition / context / latest data hook
+2. **Body** — multi-dimensional analysis (constitutional / institutional / social / economic / ethical / federal as relevant)
+3. **Challenges / Issues**
+4. **Way Forward** — actionable, specific
+5. **Conclusion** — balanced, forward-looking (1–2 lines)
+
+### Core Points (write these under the framework)
+- Crisp bullets a candidate can expand into 150/250-word answers
+- Include constitutional articles, committees, SC cases, schemes where relevant
+- Bold key terms on first mention
+
+### Data & Facts
+Markdown table when numbers/comparisons exist:
+| Indicator / Fact | Figure / Detail | Source / Year |
+|---|---|---|
+Keep every important statistic from the source.
+
+### Memory Cue
+> **Memory Cue:** Short mnemonic / acronym / story hook to recall the answer skeleton in the exam hall.
+
+### Flowchart
+Use a fenced block with ASCII arrows for process / cause–effect / institutional flow, e.g.:
+
+\`\`\`flowchart
+Problem → Causes → Stakeholders → Govt Response → Gaps → Way Forward
+\`\`\`
+
+Use → or ↓. Keep it revision-friendly (5–12 nodes max per chart). Add a flowchart for every question where a process, hierarchy, or cycle exists.
+
+### Value Addition
+- 3–6 keywords / thinkers / report names / examples for enrichment
+- Optional: 1 linked PYQ theme if obvious from content
+
+---
+
+## Global rules
+- Prefer **Q&A + framework** over long essays.
+- Remove fluff and repetition; NEVER drop facts, dates, figures, or scheme names.
+- If source is long, add more Qs (Q1, Q2, Q3…) until the whole document is covered.
+- Use comparison tables for Pros/Cons, Centre vs State, Old vs New, India vs Global, etc.
+- Hindi terms only if present in source; otherwise English.
+- Do not invent data. If a figure is approximate in source, keep it as given.
+- No meta-commentary about summarising.`;
 
 function extractMessageText(message: {
   content?: string | null;
@@ -102,7 +147,7 @@ export async function POST(request: NextRequest) {
     const MAX_CHARS = 150_000;
     const promptText =
       text.length > MAX_CHARS
-        ? `${text.slice(0, MAX_CHARS)}\n\n[Source truncated due to length — summarize all content provided above in full.]`
+        ? `${text.slice(0, MAX_CHARS)}\n\n[Source truncated due to length — cover all content provided above with multiple Q&As.]`
         : text;
 
     const client = new OpenAI({
@@ -117,13 +162,13 @@ export async function POST(request: NextRequest) {
 
     const completion = await client.chat.completions.create({
       model,
-      temperature: 0.2,
+      temperature: 0.25,
       max_tokens: 12000,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
-          content: `Source file: ${fileName}\n\nEducational text to condense:\n\n${promptText}`,
+          content: `Create UPSC Mains Q&A quick-revision notes from this source.\n\nSource file: ${fileName}\n\nSource text:\n\n${promptText}`,
         },
       ],
     });
