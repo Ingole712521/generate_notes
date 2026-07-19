@@ -9,6 +9,8 @@ Upload a PDF → AI-condensed structured notes → download a two-column A4 PDF.
 - **OpenAI API** — condense into Markdown notes
 - **@react-pdf/renderer** — generate the downloadable PDF (0.5″ margins, two columns, Helvetica 10pt)
 
+## change a lot of think
+
 ## Setup
 
 ```bash
