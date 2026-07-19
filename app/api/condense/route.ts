@@ -44,13 +44,30 @@ Keep every important statistic from the source.
 > **Memory Cue:** Short mnemonic / acronym / story hook to recall the answer skeleton in the exam hall.
 
 ### Flowchart
-Use a fenced block with ASCII arrows for process / cause–effect / institutional flow, e.g.:
+ALWAYS use this exact machine-readable format inside a fenced block (so PDF can draw boxes + arrows). Do NOT use plain paragraphs or asterisk separators.
 
 \`\`\`flowchart
-Problem → Causes → Stakeholders → Govt Response → Gaps → Way Forward
+TITLE: Short diagram name
+CHAIN: Node A → Node B → Node C
+CHAIN: Alternate path X → Y → Z
+BOX: Section name | Item 1 | Item 2 | Item 3
+BOX: Another section | Point 1 | Point 2
 \`\`\`
 
-Use → or ↓. Keep it revision-friendly (5–12 nodes max per chart). Add a flowchart for every question where a process, hierarchy, or cycle exists.
+Rules for flowcharts:
+- Use the Unicode arrow → between nodes on CHAIN lines (never apostrophes or quotes as arrows).
+- Use ASCII % for percentages (e.g. 4-6%, never special glyphs).
+- Prefer 1 TITLE, 1–3 CHAIN lines, and 1–3 BOX lines.
+- Example:
+\`\`\`flowchart
+TITLE: Inflation-Growth Nexus
+CHAIN: Moderate Inflation (4-6%) → Consumption ↑ → GDP ↑
+CHAIN: High Inflation (>6%) → Purchasing Power ↓ → GDP ↓
+BOX: MPC Tools | Repo Rate | Forward Guidance | Macroprudential Measures
+BOX: Challenges | Global shocks | Supply-chain disruptions | Transmission lag
+BOX: Way Forward | Data-driven decisions | Forward guidance | Macroprudential tools
+\`\`\`
+Add a flowchart for every question where a process, hierarchy, cycle, or cause–effect exists.
 
 ### Value Addition
 - 3–6 keywords / thinkers / report names / examples for enrichment

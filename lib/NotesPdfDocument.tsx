@@ -13,6 +13,8 @@ import {
   type InlineSeg,
   type MdBlock,
 } from "./markdown-to-blocks";
+import { FlowchartDiagram } from "./flowchart";
+import { sanitizePdfText } from "./sanitize-text";
 
 const MARGIN = 36;
 const HEADER_SPACE = 52;
@@ -224,28 +226,29 @@ function Inline({ segs }: { segs: InlineSeg[] }) {
   return (
     <>
       {segs.map((seg, idx) => {
+        const value = sanitizePdfText(seg.value);
         if (seg.type === "bold") {
           return (
             <Text key={idx} style={styles.bold}>
-              {seg.value}
+              {value}
             </Text>
           );
         }
         if (seg.type === "italic") {
           return (
             <Text key={idx} style={styles.italic}>
-              {seg.value}
+              {value}
             </Text>
           );
         }
         if (seg.type === "code") {
           return (
             <Text key={idx} style={styles.code}>
-              {seg.value}
+              {value}
             </Text>
           );
         }
-        return <Text key={idx}>{seg.value}</Text>;
+        return <Text key={idx}>{value}</Text>;
       })}
     </>
   );
@@ -385,16 +388,7 @@ function BlockView({ block }: { block: MdBlock }) {
     case "callout":
       return <CalloutBlock block={block} />;
     case "flowchart":
-      return (
-        <View style={styles.flowchart} wrap minPresenceAhead={36}>
-          <Text style={styles.flowchartLabel}>FLOWCHART / DIAGRAM</Text>
-          {block.lines.map((line, i) => (
-            <Text key={i} style={styles.flowchartLine}>
-              {line || " "}
-            </Text>
-          ))}
-        </View>
-      );
+      return <FlowchartDiagram lines={block.lines} />;
     case "hr":
       return <View style={styles.hr} />;
     default:

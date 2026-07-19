@@ -9,6 +9,122 @@ type PreviewPaneProps = {
   isLoading?: boolean;
 };
 
+function sanitizePreview(text: string): string {
+  return text
+    .replace(/Â%/g, "%")
+    .replace(/(\d)\s*Â(?!\w)/g, "$1%")
+    .replace(/Â(?=\s|$|,|\.|\)|;)/g, "%")
+    .replace(/\s*''\s*/g, " → ")
+    .replace(/\s*->\s*/g, " → ")
+    .replace(/\s*=>\s*/g, " → ");
+}
+
+function PreviewFlowchart({ raw }: { raw: string }) {
+  const lines = sanitizePreview(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^[\*\-_]+$/.test(l));
+
+  const chains: string[][] = [];
+  const boxes: { title: string; items: string[] }[] = [];
+  let title = "";
+
+  for (const line of lines) {
+    const t = /^(?:title|diagram)\s*:\s*(.+)$/i.exec(line);
+    if (t) {
+      title = t[1];
+      continue;
+    }
+    const c = /^(?:chain|flow)\s*:\s*(.+)$/i.exec(line);
+    if (c) {
+      chains.push(
+        c[1]
+          .split(/\s*(?:→|->|=>)\s*/)
+          .map((n) => n.trim())
+          .filter(Boolean)
+      );
+      continue;
+    }
+    const b = /^(?:box|group)\s*:\s*(.+)$/i.exec(line);
+    if (b) {
+      const parts = b[1]
+        .split("|")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length >= 2) boxes.push({ title: parts[0], items: parts.slice(1) });
+      continue;
+    }
+    if (/\s*(?:→|->|=>)\s*/.test(line)) {
+      chains.push(
+        line
+          .split(/\s*(?:→|->|=>)\s*/)
+          .map((n) => n.trim())
+          .filter(Boolean)
+      );
+      continue;
+    }
+    if (!title && line.length < 60) title = line;
+  }
+
+  return (
+    <div className="my-4 rounded-xl border border-ink-200 bg-ink-50 p-4">
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-ink-600">
+        Flowchart / diagram
+      </p>
+      {title ? (
+        <p className="mb-3 text-center text-sm font-semibold text-ink-900">{title}</p>
+      ) : null}
+
+      {chains.map((nodes, ci) => (
+        <div
+          key={ci}
+          className="mb-3 flex flex-wrap items-center justify-center gap-1.5"
+        >
+          {nodes.map((node, ni) => (
+            <div key={ni} className="flex items-center gap-1.5">
+              <span className="inline-block max-w-[160px] rounded-md border border-ink-800 bg-white px-2.5 py-1.5 text-center text-xs leading-snug text-ink-900">
+                {node}
+              </span>
+              {ni < nodes.length - 1 ? (
+                <span className="font-bold text-ink-800" aria-hidden>
+                  →
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ))}
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {boxes.map((box, bi) => (
+          <div
+            key={bi}
+            className="overflow-hidden rounded-md border border-ink-300 bg-white"
+          >
+            <div className="bg-ink-700 px-2.5 py-1.5 text-xs font-semibold text-white">
+              {box.title}
+            </div>
+            <ul className="space-y-1 px-2.5 py-2 text-xs text-ink-800">
+              {box.items.map((item, ii) => (
+                <li key={ii} className="flex gap-1.5">
+                  <span className="text-accent">▸</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {!chains.length && !boxes.length ? (
+        <pre className="whitespace-pre-wrap font-mono text-[12px] text-ink-800">
+          {sanitizePreview(raw)}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
 export default function PreviewPane({
   markdown,
   title = "UPSC Mains Revision",
@@ -123,22 +239,12 @@ export default function PreviewPane({
                 <div className="text-[15px] leading-relaxed">{children}</div>
               </blockquote>
             ),
-            pre: ({ children }) => (
-              <div className="my-4 overflow-x-auto rounded-xl border border-ink-200 bg-ink-50 p-4">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-600">
-                  Flowchart / diagram
-                </p>
-                {children}
-              </div>
-            ),
+            pre: ({ children }) => <>{children}</>,
             code: ({ children, className }) => {
               const isBlock = Boolean(className);
               if (isBlock) {
-                return (
-                  <code className="block whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-ink-900">
-                    {children}
-                  </code>
-                );
+                const raw = String(children).replace(/\n$/, "");
+                return <PreviewFlowchart raw={raw} />;
               }
               return (
                 <code className="break-all rounded bg-ink-100 px-1.5 py-0.5 text-[0.9em] text-ink-900">
