@@ -81,7 +81,10 @@ function openRouterErrorMessage(error: unknown): string {
     return "Rate limited by OpenRouter. Wait a moment and try again.";
   }
   if (/timeout|ETIMEDOUT|aborted/i.test(apiMsg)) {
-    return "AI call timed out. Try a faster model (e.g. deepseek/deepseek-v4-flash) or a shorter PDF.";
+    return "This step timed out on the server. The app will retry smaller steps — keep the tab open and wait.";
+  }
+  if (/model.*not found|no endpoints/i.test(apiMsg)) {
+    return `Model unavailable: ${process.env.OPENAI_MODEL || "configured model"}. Check OPENAI_MODEL in env.`;
   }
   return apiMsg;
 }
@@ -130,10 +133,10 @@ export async function POST(request: NextRequest) {
     }
 
     const baseURL = process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1";
-    const model = process.env.OPENAI_MODEL || "deepseek/deepseek-v4-flash";
+    const model = process.env.OPENAI_MODEL || "openai/gpt-oss-20b:free";
 
-    // Keep each serverless call small/fast for Vercel
-    const MAX_CHARS = 28_000;
+    // Small chunks = each serverless call can finish slowly but under Vercel’s 60s cap
+    const MAX_CHARS = 16_000;
     const promptText =
       text.length > MAX_CHARS
         ? `${text.slice(0, MAX_CHARS)}\n\n[End of this chunk — cover all of the above fully.]`
@@ -142,7 +145,7 @@ export async function POST(request: NextRequest) {
     const client = new OpenAI({
       apiKey,
       baseURL,
-      timeout: 50_000,
+      timeout: 55_000,
       defaultHeaders: {
         "HTTP-Referer": process.env.OPENROUTER_SITE_URL || "https://pdf2notes-pro.vercel.app",
         "X-Title": process.env.OPENROUTER_APP_NAME || "PDF2Notes Pro",
@@ -189,7 +192,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: finish
-            ? `Empty AI response (finish_reason: ${finish}). Try deepseek/deepseek-v4-flash.`
+            ? `Empty AI response (finish_reason: ${finish}). Please retry — free models can be flaky.`
             : "Empty AI response. Please try again.",
         },
         { status: 502 }

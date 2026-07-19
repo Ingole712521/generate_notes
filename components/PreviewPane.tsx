@@ -144,7 +144,7 @@ export default function PreviewPane({
           ))}
         </div>
         <p className="mt-6 text-sm text-ink-500">
-          Building full UPSC Q&A notes… Long PDFs may take 1–3 minutes so nothing is cut off.
+          Building UPSC Q&A notes with your free model… This can take several minutes. Keep the tab open.
         </p>
       </div>
     );

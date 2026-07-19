@@ -1,11 +1,11 @@
 /**
- * Split long source text into chunks for sequential /api/condense calls
- * (avoids Vercel FUNCTION_INVOCATION_TIMEOUT).
+ * Smaller chunks so slow free models finish each Vercel call (~60s) reliably.
+ * Overall job can still take many minutes via sequential steps in the browser.
  */
 export function splitSourceChunks(
   text: string,
-  chunkSize = 26_000,
-  overlap = 800
+  chunkSize = 14_000,
+  overlap = 600
 ): string[] {
   const t = text.trim();
   if (t.length <= chunkSize) return [t];

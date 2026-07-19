@@ -51,7 +51,7 @@ async function callCondense(payload: {
   } catch {
     throw new Error(
       res.status === 504 || res.status === 408
-        ? "Server timed out. Redeploy the latest build (multi-step generate). Free models are slow — try deepseek/deepseek-v4-flash."
+        ? "Server step timed out. Keep this tab open — smaller steps will continue. Free models can take several minutes overall."
         : `Condensing failed (HTTP ${res.status}).`
     );
   }
@@ -65,27 +65,65 @@ async function callCondense(payload: {
   return data;
 }
 
-/** One chunk: start + up to N continue calls (each call stays under Vercel timeout). */
+async function callCondenseWithRetry(
+  payload: Parameters<typeof callCondense>[0],
+  onProgress: (msg: string) => void,
+  retries = 2
+): Promise<CondenseResponse> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      if (attempt > 0) {
+        onProgress(`Retrying step (attempt ${attempt + 1}) — free model is slow, please wait…`);
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
+      return await callCondense(payload);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const msg = lastError.message.toLowerCase();
+      const retryable =
+        msg.includes("timeout") ||
+        msg.includes("429") ||
+        msg.includes("rate") ||
+        msg.includes("empty ai") ||
+        msg.includes("502") ||
+        msg.includes("503") ||
+        msg.includes("flaky");
+      if (!retryable || attempt === retries) break;
+    }
+  }
+  throw lastError || new Error("Condensing failed.");
+}
+
+/** One chunk: start + continues. Overall job may take many minutes — that is OK. */
 async function condenseChunk(
   text: string,
   fileName: string,
   onProgress: (msg: string) => void,
-  maxContinues = 3
+  maxContinues = 8
 ): Promise<string> {
-  onProgress("Generating notes…");
-  let data = await callCondense({ text, fileName, mode: "start" });
+  onProgress("Generating notes (this can take several minutes — keep tab open)…");
+  let data = await callCondenseWithRetry(
+    { text, fileName, mode: "start" },
+    onProgress
+  );
   let markdown = data.markdown!;
   let continues = 0;
 
   while (data.incomplete && continues < maxContinues) {
     continues += 1;
-    onProgress(`Continuing notes (pass ${continues + 1})…`);
-    data = await callCondense({
-      text,
-      fileName,
-      mode: "continue",
-      priorMarkdown: markdown,
-    });
+    onProgress(
+      `Still working — continuation ${continues}/${maxContinues} (free model, please wait)…`
+    );
+    data = await callCondenseWithRetry(
+      {
+        text,
+        fileName,
+        mode: "continue",
+        priorMarkdown: markdown,
+      },
+      onProgress
+    );
     markdown = mergeNoteParts(markdown, data.markdown!);
   }
 
@@ -165,10 +203,11 @@ export default function HomePage() {
           chunks.length > 1
             ? `Section ${i + 1}/${chunks.length}`
             : "Generating notes";
-        setProgress(`${label}…`);
+        setProgress(
+          `${label} — free model can take several minutes total. Keep this tab open.`
+        );
         const part = await condenseChunk(chunks[i], fileName, setProgress);
         combined = i === 0 ? part : mergeNoteParts(combined, part);
-        // Show partial preview as we go
         setMarkdown(combined);
       }
 
@@ -280,8 +319,8 @@ export default function HomePage() {
             PDF2Notes Pro
           </h1>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink-700 text-balance">
-            Turn any GS PDF into Mains-ready Q&A notes. Long docs generate in short steps (no Vercel
-            timeout) and download as Part 1 + Part 2 when needed.
+            Turn any GS PDF into Mains-ready Q&A notes. Free models are slow — generation can take
+            several minutes; keep this tab open. Long notes download as Part 1 + Part 2.
           </p>
         </header>
 
@@ -402,8 +441,8 @@ export default function HomePage() {
                 <span className="font-semibold text-ink-900">1. Upload</span> — GS PDF (max 10MB).
               </li>
               <li>
-                <span className="font-semibold text-ink-900">2. Generate</span> — short AI steps
-                (avoids Vercel timeout); preview fills as it goes.
+                <span className="font-semibold text-ink-900">2. Generate</span> — runs in small
+                steps so it can take its time (several minutes is normal on free models).
               </li>
               <li>
                 <span className="font-semibold text-ink-900">3. Download</span> — 1 PDF or Part 1 +
