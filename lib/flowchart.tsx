@@ -278,7 +278,7 @@ export function parseFlowchart(rawLines: string[]): FlowSegment[] {
 
 function NodeBox({ text, accent = false }: { text: string; accent?: boolean }) {
   return (
-    <View style={accent ? styles.boxAccent : styles.box} wrap={false}>
+    <View style={accent ? styles.boxAccent : styles.box}>
       <Text style={styles.boxText}>{sanitizePdfText(text)}</Text>
     </View>
   );
@@ -301,7 +301,7 @@ function ChainView({
 
   if (direction === "vertical") {
     return (
-      <View style={styles.chainCol} wrap={false}>
+      <View style={styles.chainCol}>
         {nodes.map((node, i) => (
           <React.Fragment key={i}>
             <NodeBox text={node} accent={i === 0 || i === nodes.length - 1} />
@@ -331,11 +331,11 @@ function ChainView({
 
 function GroupView({ title, items }: { title: string; items: string[] }) {
   return (
-    <View style={styles.group} wrap={false}>
+    <View style={styles.group} wrap>
       <Text style={styles.groupTitle}>{sanitizePdfText(title)}</Text>
       <View style={styles.groupBody}>
         {items.map((item, i) => (
-          <View key={i} style={styles.groupItem}>
+          <View key={i} style={styles.groupItem} wrap>
             <Text style={styles.groupBullet}>▸</Text>
             <Text style={styles.groupItemText}>{sanitizePdfText(item)}</Text>
           </View>
@@ -358,7 +358,7 @@ export function FlowchartDiagram({ lines }: { lines: string[] }) {
   }
 
   return (
-    <View style={styles.wrap} wrap minPresenceAhead={48}>
+    <View style={styles.wrap} wrap>
       <Text style={styles.label}>FLOWCHART / DIAGRAM</Text>
       {segments.map((seg, idx) => {
         if (seg.kind === "title") {

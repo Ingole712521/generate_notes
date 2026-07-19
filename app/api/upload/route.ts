@@ -77,8 +77,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Cap only extremely long documents
-    const MAX_CHARS = 200_000;
+    // No artificial short cap — keep full extractable text
+    const MAX_CHARS = 400_000;
     const truncated = text.length > MAX_CHARS;
     const extractedText = truncated ? text.slice(0, MAX_CHARS) : text;
 

@@ -142,7 +142,7 @@ export default function HomePage() {
     step === "extracting"
       ? "Extracting text…"
       : step === "condensing"
-        ? "Building UPSC notes…"
+        ? "Building full UPSC notes…"
         : step === "exporting"
           ? "Generating PDF…"
           : null;

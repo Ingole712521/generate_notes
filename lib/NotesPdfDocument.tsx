@@ -18,7 +18,8 @@ import { sanitizePdfText } from "./sanitize-text";
 
 const MARGIN = 36;
 const HEADER_SPACE = 52;
-const FOOTER_SPACE = 28;
+/** Extra bottom space so the last lines never hide under the footer */
+const FOOTER_SPACE = 40;
 const CONTENT_WIDTH = 595.28 - MARGIN * 2;
 
 const CALLOUT_COLORS: Record<
@@ -273,7 +274,7 @@ function TableBlock({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
         ))}
       </View>
       {block.rows.map((row, ri) => (
-        <View key={ri} style={styles.tableRow} wrap={false} minPresenceAhead={10}>
+        <View key={ri} style={styles.tableRow} wrap>
           {Array.from({ length: colCount }).map((_, ci) => (
             <Text key={ci} style={[styles.tableCell, { width: cellWidth }]}>
               {row[ci] ? <Inline segs={row[ci]} /> : " "}

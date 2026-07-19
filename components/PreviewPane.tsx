@@ -144,7 +144,7 @@ export default function PreviewPane({
           ))}
         </div>
         <p className="mt-6 text-sm text-ink-500">
-          Building UPSC Mains Q&A notes (frameworks, data, memory cues, flowcharts)…
+          Building full UPSC Q&A notes… Long PDFs may take 1–3 minutes so nothing is cut off.
         </p>
       </div>
     );

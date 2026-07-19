@@ -3,7 +3,7 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const SYSTEM_PROMPT = `You are an expert UPSC Civil Services (Mains) mentor and notes-maker.
 
@@ -58,31 +58,30 @@ Rules for flowcharts:
 - Use the Unicode arrow → between nodes on CHAIN lines (never apostrophes or quotes as arrows).
 - Use ASCII % for percentages (e.g. 4-6%, never special glyphs).
 - Prefer 1 TITLE, 1–3 CHAIN lines, and 1–3 BOX lines.
-- Example:
-\`\`\`flowchart
-TITLE: Inflation-Growth Nexus
-CHAIN: Moderate Inflation (4-6%) → Consumption ↑ → GDP ↑
-CHAIN: High Inflation (>6%) → Purchasing Power ↓ → GDP ↓
-BOX: MPC Tools | Repo Rate | Forward Guidance | Macroprudential Measures
-BOX: Challenges | Global shocks | Supply-chain disruptions | Transmission lag
-BOX: Way Forward | Data-driven decisions | Forward guidance | Macroprudential tools
-\`\`\`
 Add a flowchart for every question where a process, hierarchy, cycle, or cause–effect exists.
 
 ### Value Addition
 - 3–6 keywords / thinkers / report names / examples for enrichment
-- Optional: 1 linked PYQ theme if obvious from content
 
 ---
 
 ## Global rules
 - Prefer **Q&A + framework** over long essays.
 - Remove fluff and repetition; NEVER drop facts, dates, figures, or scheme names.
-- If source is long, add more Qs (Q1, Q2, Q3…) until the whole document is covered.
+- Cover the ENTIRE source from start to end. If output space runs out, end at a clean ## Q boundary so a continuation can finish remaining topics — never stop mid-sentence or mid-table.
 - Use comparison tables for Pros/Cons, Centre vs State, Old vs New, India vs Global, etc.
-- Hindi terms only if present in source; otherwise English.
-- Do not invent data. If a figure is approximate in source, keep it as given.
-- No meta-commentary about summarising.`;
+- Do not invent data.
+- No meta-commentary about summarising.
+- When asked to CONTINUE, resume with the next ## Q{n} and finish every remaining topic. Do not repeat earlier questions.`;
+
+const CONTINUE_PROMPT = `Your previous output was cut off due to length limits. Continue the UPSC Mains Q&A revision notes from EXACTLY where you stopped.
+
+Rules:
+- Do NOT repeat the title or any completed ## Q sections already written.
+- Continue with the next question number after the last complete Q in the prior text.
+- Cover ALL remaining source topics until the document is fully covered.
+- Keep the same Markdown structure (Answer Framework, Core Points, Data & Facts, Memory Cue, Flowchart, Value Addition).
+- End only when the full source is covered.`;
 
 function extractMessageText(message: {
   content?: string | null;
@@ -91,7 +90,6 @@ function extractMessageText(message: {
   const content = message?.content?.trim();
   if (content) return content;
 
-  // Some OpenRouter reasoning models occasionally leave content empty
   const reasoning = message?.reasoning?.trim();
   if (reasoning && /^#\s/m.test(reasoning)) return reasoning;
 
@@ -128,6 +126,121 @@ function openRouterErrorMessage(error: unknown): string {
   return apiMsg;
 }
 
+function looksIncomplete(markdown: string): boolean {
+  const trimmed = markdown.trim();
+  if (!trimmed) return true;
+  // Unclosed code fence (flowchart cut mid-way)
+  if ((trimmed.match(/```/g) || []).length % 2 === 1) return true;
+  // Ends mid-punctuation / mid-arrow (hard cut)
+  const last = trimmed.slice(-60);
+  if (/(?:→|->|,|:|\|\s*)$/.test(last)) return true;
+  return false;
+}
+
+function mergeContinuation(base: string, cont: string): string {
+  let extra = cont.trim();
+  // Drop accidental repeated H1
+  extra = extra.replace(/^#\s+[^\n]+\n+/, "");
+  return `${base.trimEnd()}\n\n${extra}`.trim();
+}
+
+/** Split long source into overlapping parts so every section is covered. */
+function splitSource(text: string, chunkSize = 45_000, overlap = 2_000): string[] {
+  if (text.length <= chunkSize) return [text];
+
+  const parts: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + chunkSize, text.length);
+    if (end < text.length) {
+      // Prefer break at paragraph
+      const window = text.slice(start, end);
+      const breakAt = Math.max(window.lastIndexOf("\n\n"), window.lastIndexOf(". "));
+      if (breakAt > chunkSize * 0.6) {
+        end = start + breakAt + 1;
+      }
+    }
+    parts.push(text.slice(start, end).trim());
+    if (end >= text.length) break;
+    start = Math.max(0, end - overlap);
+  }
+  return parts.filter(Boolean);
+}
+
+async function generateOnce(
+  client: OpenAI,
+  model: string,
+  messages: OpenAI.Chat.ChatCompletionMessageParam[]
+) {
+  return client.chat.completions.create({
+    model,
+    temperature: 0.25,
+    max_tokens: 16000,
+    messages,
+  });
+}
+
+/**
+ * Generate notes and auto-continue when the model hits the token limit,
+ * so the last sections are never dropped.
+ */
+async function generateCompleteNotes(
+  client: OpenAI,
+  model: string,
+  fileName: string,
+  sourceText: string,
+  partLabel?: string
+): Promise<{ markdown: string; continued: number }> {
+  const partNote = partLabel
+    ? `\n\n(This is ${partLabel} of a longer document. Cover THIS part fully with Q&As. Number questions continuing naturally.)`
+    : "";
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: `Create UPSC Mains Q&A quick-revision notes from this source. Cover EVERY topic in the source — do not stop early.${partNote}\n\nSource file: ${fileName}\n\nSource text:\n\n${sourceText}`,
+    },
+  ];
+
+  let markdown = "";
+  let continued = 0;
+  const MAX_CONTINUES = 5;
+
+  for (let attempt = 0; attempt <= MAX_CONTINUES; attempt += 1) {
+    const completion = await generateOnce(client, model, messages);
+    const choice = completion.choices[0];
+    const piece = extractMessageText(choice?.message);
+    const finish = String(choice?.finish_reason || "");
+
+    if (!piece && !markdown) {
+      throw Object.assign(new Error("The AI returned an empty summary."), {
+        status: 502,
+      });
+    }
+
+    markdown = markdown ? mergeContinuation(markdown, piece) : piece;
+
+    // Continue when the model hit the output token limit or markup is clearly cut off
+    const hitLimit = finish === "length" || finish === "max_tokens";
+    const shouldContinue =
+      hitLimit || (looksIncomplete(markdown) && attempt < 2);
+
+    if (!shouldContinue || attempt === MAX_CONTINUES) {
+      break;
+    }
+
+    continued += 1;
+    messages.push({ role: "assistant", content: piece || markdown.slice(-6000) });
+    messages.push({
+      role: "user",
+      content: `${CONTINUE_PROMPT}\n\n---\nLast 1500 characters you already wrote (for continuity only — do not repeat):\n${markdown.slice(-1500)}`,
+    });
+  }
+
+  return { markdown, continued };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -160,47 +273,58 @@ export async function POST(request: NextRequest) {
       process.env.OPENAI_BASE_URL || "https://openrouter.ai/api/v1";
     const model = process.env.OPENAI_MODEL || "deepseek/deepseek-v4-flash";
 
-    // Bound extremely large pastes; keep as much source as practical
-    const MAX_CHARS = 150_000;
+    // Keep almost all source text; only hard-cap pathological sizes
+    const MAX_CHARS = 250_000;
     const promptText =
       text.length > MAX_CHARS
-        ? `${text.slice(0, MAX_CHARS)}\n\n[Source truncated due to length — cover all content provided above with multiple Q&As.]`
+        ? text.slice(0, MAX_CHARS)
         : text;
 
     const client = new OpenAI({
       apiKey,
       baseURL,
-      timeout: 110_000,
+      timeout: 180_000,
       defaultHeaders: {
         "HTTP-Referer": process.env.OPENROUTER_SITE_URL || "http://localhost:3000",
         "X-Title": process.env.OPENROUTER_APP_NAME || "PDF2Notes Pro",
       },
     });
 
-    const completion = await client.chat.completions.create({
-      model,
-      temperature: 0.25,
-      max_tokens: 12000,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Create UPSC Mains Q&A quick-revision notes from this source.\n\nSource file: ${fileName}\n\nSource text:\n\n${promptText}`,
-        },
-      ],
-    });
+    const chunks = splitSource(promptText);
+    const parts: string[] = [];
+    let totalContinued = 0;
 
-    const choice = completion.choices[0];
-    const markdown = extractMessageText(choice?.message);
+    for (let i = 0; i < chunks.length; i += 1) {
+      const label =
+        chunks.length > 1 ? `part ${i + 1} of ${chunks.length}` : undefined;
+      const { markdown, continued } = await generateCompleteNotes(
+        client,
+        model,
+        fileName,
+        chunks[i],
+        label
+      );
+      totalContinued += continued;
+
+      if (chunks.length > 1) {
+        // Renumber-ish: keep content; strip duplicate H1 after first part
+        if (i === 0) parts.push(markdown);
+        else parts.push(markdown.replace(/^#\s+[^\n]+\n+/, "").trim());
+      } else {
+        parts.push(markdown);
+      }
+    }
+
+    let markdown = parts.join("\n\n---\n\n").trim();
+
+    // Ensure trailing incomplete fence is closed so PDF parser keeps last diagram
+    if ((markdown.match(/```/g) || []).length % 2 === 1) {
+      markdown += "\n```";
+    }
 
     if (!markdown) {
-      const finish = choice?.finish_reason;
       return NextResponse.json(
-        {
-          error: finish
-            ? `The AI returned an empty summary (finish_reason: ${finish}). Try another model such as deepseek/deepseek-v4-flash.`
-            : "The AI returned an empty summary. Please try again or switch models.",
-        },
+        { error: "The AI returned an empty summary. Please try again." },
         { status: 502 }
       );
     }
@@ -209,7 +333,10 @@ export async function POST(request: NextRequest) {
       success: true,
       markdown,
       model,
-      usage: completion.usage ?? null,
+      continued: totalContinued,
+      parts: chunks.length,
+      sourceChars: promptText.length,
+      truncatedSource: text.length > MAX_CHARS,
     });
   } catch (error: unknown) {
     console.error("[condense]", error);
